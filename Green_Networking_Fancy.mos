@@ -1,0 +1,123 @@
+model "Green_Networking_Fancy"
+  uses "mmxprs"
+
+  declarations
+    Set = 1..16
+
+    x : array(Set) of mpvar
+    y : array(Set, Set) of mpvar
+    fsd : array(Set, Set, Set, Set) of mpvar
+    f : array(Set, Set) of mpvar
+    BigF : array(Set) of mpvar
+    Obj : mpvar
+	
+	Nodes : integer
+    Tsd : array(Set, Set) of real
+    b : array(Set, Set) of integer
+    Pr : array(Set) of real ! The setup cost for the routers
+    Pl : array(Set, Set) of real ! The setup cost for the links
+    Qr : array(Set) of real ! The angular coefficient of the setup cost (how much the cost increases with the load) for the routers
+    Ql : array(Set, Set) of real ! The anguar coefficient of the setup cost for the links
+    C : array(Set, Set) of real ! capacity associated to each link
+    alfa : real
+    Delta : integer
+  end-declarations
+
+  setrandseed(0)
+  !Initialization of the parameters
+  ! Number of nodes
+  Nodes := 16
+  ! 1 - Traffic matrix uniformly distributed between 6 and 12
+  forall(n in Set, m in Set | n <> m) do
+  	Tsd(n,m) := 0.5+(random*(1.5-0.5)) ! Gbps
+  end-do
+  ! 2 - Maximum computation time = 3 min
+  setparam("XPRS_MAXTIME", -180)
+  ! 3 - Power consumption of the routers, when they are on. In this case a real number between 12 and 25
+  forall(n in Set) do
+  	Pr(n) := 1000 ! Watt
+  end-do
+  ! 4 - The angular coefficient of the setup cost for the routers
+  forall(n in Set) do
+  	Qr(n) := 0.087 ! Between 5 and 10 degrees
+  end-do
+  forall(n in Set, m in Set) do
+  	Pl(n, m) := 600 ! Watt
+  end-do
+  ! 4 - The angular coefficient of the setup cost for the routers
+  forall(n in Set, m in Set) do
+  	Ql(n, m) := 0.087 ! Inclination of 5 degrees
+  end-do
+  ! 5 - Number of transmitters and receivers
+  Delta := 9
+  !Capcity
+  forall(i in Set, j in Set) do
+  	C(i, j) := 1.5*Nodes ! Gbps
+  end-do
+  ! Security coefficient
+  alfa := 0.8
+  
+  
+  !Initialization of the topology (random or grid)
+  b(1,2):=1
+  b(1,3):=1
+  b(1,4):=1
+  b(2,1):=1
+  b(2,3):=1
+  b(2,4):=1
+  b(3,2):=1
+  b(3,1):=1
+  b(3,4):=1
+  b(4,2):=1
+  b(4,3):=1
+  b(4,1):=1
+  forall(i in 1..4, j in Set) do
+     if (i<=2) then
+      if (j<=10) then
+         b(i,j) := 1
+         b(j,i) := 1
+      end-if
+     else
+      if(j>=11) then
+         b(i,j) := 1
+         b(j,i) := 1
+      end-if
+     end-if
+  end-do
+  forall(i in Set) do
+     b(i,i) := 0
+  end-do
+!   forall(i in Set, j in Set|i <> j) do
+!     b(i, j) := 1
+!   end-do
+  
+  !Objectiv Function:
+  Myfunct := Obj
+  
+  !Constraints
+  ! The first three are the flow constraints
+  forall(s in Set, d in Set, i in Set|i <> s and i <> d) sum(j in Set) fsd(s, d, i, j) - sum(j in Set) fsd(s, d, j, i) = 0
+  forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, s, j) = Tsd(s, d)
+  forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, j, d) = Tsd(s, d)
+  
+  forall(i in Set, j in Set) y(i, j) <= b(i, j)
+  forall(s in Set, d in Set, i in Set, j in Set) fsd(s, d, i, j) <= Tsd(s, d) * y(i, j) ! The flow is 0 when a link is down
+  forall(i in Set, j in Set) f(i, j) = sum(s in Set) sum(d in Set) fsd(s, d, i, j) ! The overall flow on a link is the sum of each single f_{ij}^{sd}
+  forall(i in Set) sum(j in Set) y(i, j) + sum(j in Set) y(j, i) <= 2*Delta*x(i) ! BigM constraint (if a router is off, the flow must be 0)
+  forall(i in Set) BigF(i) = sum(j in Set) f(i, j) + sum(j in Set) f(j, i)
+  forall(i in Set, j in Set) f(i, j) <= alfa*C(i, j)*y(i, j)
+  
+  forall(i in Set, j in Set) f(i, j) >= 0
+  forall(s in Set, d in Set, i in Set, j in Set) fsd(s, d, i, j) >= 0
+  
+  Obj = sum(i in Set) Pr(i)*x(i) + sum(i in Set) Qr(i) * BigF(i) + sum(i in Set, j in Set) Pl(i, j)*y(i, j) + sum(i in Set, j in Set) Ql(i, j)*f(i, j)
+  
+  !Binary Variables
+  forall(i in Set) x(i) is_binary
+  forall(i in Set, j in Set) y(i, j) is_binary
+  
+  !Minimize or Maximize
+  minimize(Myfunct)
+  
+  
+end-model

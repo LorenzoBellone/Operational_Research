@@ -1,0 +1,58 @@
+model ModelName
+  uses "mmxprs"
+
+  declarations
+    Set = 1..6
+
+  	b : array(Set, Set) of mpvar
+  	fsd : array(Set, Set, Set, Set) of mpvar
+  	f : array(Set, Set) of mpvar
+  	Obj : mpvar
+
+  	Tsd : array(Set, Set) of real
+  	Delta  : integer
+  	N : integer
+  end-declarations
+
+  !Init of parameters
+  Delta := 4
+  setrandseed(0)
+  forall(n in 1..3, m in 1..3 | n<>m) do
+    Tsd(n, m) := 15+(random*(30-15))
+  end-do
+  forall(n in 4..6, m in 4..6 | n<>m) do
+    Tsd(n, m) := 15+(random*(30-15))
+  end-do
+  forall(n in 1..3, m in 4..6 | n<>m) do
+    Tsd(n, m) := 1+(random*(3-1))
+  end-do
+  forall(n in 4..6, m in 1..3 | n<>m) do
+    Tsd(n, m) := 1+(random*(3-1))
+  end-do
+  setparam("XPRS_MAXTIME", -300)
+
+  !Objective Function
+  MyFunct := Obj
+
+  !Constraints
+  forall(i in Set) sum(j in Set) b(i, j) <= Delta
+  forall(i in Set) sum(j in Set) b(j, i) <= Delta
+  forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, s, j) = 1
+  forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, j, d) = 1
+  forall(s in Set, d in Set) sum(j in Set) fsd(s, d, j, s) = 0
+  forall(s in Set, d in Set) sum(j in Set) fsd(s, d, d, j) = 0
+  forall(i in Set, s in Set, d in Set | i <> s and i <> d) sum(j in Set) fsd(s, d, i, j) = sum(j in Set) fsd(s, d, j, i)
+  forall(i in Set, j in Set) f(i, j) = sum(s in Set, d in Set) (Tsd(s, d)*fsd(s, d, i, j))
+  forall(i in Set, j in Set) f(i, j) <= Obj
+  forall(s in Set, d in Set, i in Set, j in Set) fsd(s, d, i, j) <= b(i, j)
+
+  !Binary Variables
+  forall(i in Set, j in Set) b(i, j) is_binary
+  !If we want to obtain one single path for every s-->d, the following constraint must be added:
+  !forall(s in Set, d in Set, i in Set, j in Set) fsd(s, d, i, j) is_binary
+  !Minimize or maximize the objective function:
+  minimize(MyFunct)
+
+  writeln("The minimum of the maximum flow passing through the network is: ", getobjval)
+
+end-model

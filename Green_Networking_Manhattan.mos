@@ -1,0 +1,145 @@
+
+model "Green_Networking_Manhattan"
+  uses "mmxprs"
+
+  declarations
+    Set = 1..20
+
+    x : array(Set) of mpvar ! router state
+    y : array(Set, Set) of mpvar ! Link state
+    fsd : array(Set, Set, Set, Set) of mpvar
+    f : array(Set, Set) of mpvar
+    BigF : array(Set) of mpvar
+    Obj : mpvar
+	 
+	Nodes : integer
+    Tsd : array(Set, Set) of real
+    b : array(Set, Set) of integer
+    Pr : array(Set) of real ! The setup cost for the routers
+    Pl : array(Set, Set) of real ! Setup cost for the links
+    Qr : array(Set) of real ! The angular coefficient of the setup cost (how much the cost increases with the load)
+    Ql : array(Set, Set) of real ! Angular coefficient for the links
+    C : array(Set, Set) of real ! capacity associated to each link
+    alfa : real
+    Delta : integer
+  end-declarations
+
+  !Initialization of the parameters
+  setrandseed(0)
+  ! Number of nodes
+  Nodes := 20
+  ! 1 - Traffic matrix uniformly distributed between 6 and 12
+  forall(n in Set, m in Set | n <> m) do
+  	Tsd(n,m) := 4 +(random*(6-4))
+  end-do
+  forall(n in Set) do
+  	Tsd(7, n) := 0
+  	Tsd(8, n) := 0
+  	Tsd(12, n) := 0
+  	Tsd(13, n) := 0		
+  	Tsd(n, 8) := 0
+  	Tsd(n, 7) := 0
+  	Tsd(n, 12) := 0
+  	Tsd(n, 13) := 0		
+  end-do
+  ! 2 - Maximum computation time = 3 min
+  setparam("XPRS_MAXTIME", -180)
+  ! 3 - Power consumption of the routers, when they are on. In this case a real number between 12 and 25
+  forall(n in Set) do
+  	Pr(n) := 1000 ! Watt
+  end-do
+  ! 4 - The angular coefficient of the setup cost
+  forall(n in Set) do
+  	Qr(n) := 0.087 ! 5 degrees
+  end-do
+  forall(n in Set, m in Set) do
+	  Pl(n, m) := 600 ! Watt
+  end-do
+  ! 4 - The angular coefficient of the setup cost for the routers
+  forall(n in Set, m in Set) do
+	  Ql(n, m) := 0.087 ! Inclination of 5 degrees
+  end-do
+  ! 5 - Number of transmitters and receivers
+  Delta := 4
+  !Capcity
+  forall(i in Set, j in Set) do
+  	C(i, j) := 5*Nodes
+  end-do
+  ! Security coefficient
+  alfa := 0.7
+  
+    
+  !Initialization of the topology 
+  !Grid topology
+    forall(i in Set) do
+     !Horizontal connection
+     if ((i mod 5)<>0) then 
+      b(i,i+1) := 1 
+     else
+      b(i,i-4) := 1
+     end-if
+     if ((i mod 5)<>1) then
+      b(i,i-1) := 1
+     else
+      b(i,i+4) := 1
+     end-if 
+     !Vertical connection
+     if (i < 16) then
+      b(i,i+5) := 1
+     else
+      b(i,i-15):= 1 
+     end-if
+     if (i > 5) then
+      b(i,i-5) := 1
+     else
+      b(i,i+15) := 1
+     end-if
+    end-do
+    
+    !Objectiv Function:
+    Myfunct := Obj
+    
+    !Constraints
+    ! The first three are the flow constraints
+    forall(s in Set, d in Set, i in Set|i <> s and i <>d) sum(j in Set) fsd(s, d, i, j) - sum(j in Set) fsd(s, d, j, i) = 0
+    forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, s, j) = Tsd(s, d)
+    forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, j, d) = Tsd(s, d)
+    forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, j, s) = 0
+    forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, d, j) = 0
+    
+    
+    forall(i in Set, j in Set) y(i, j) <= b(i, j)
+    forall(s in Set, d in Set, i in Set, j in Set) fsd(s, d, i, j) <= Tsd(s, d) * y(i, j) ! The flow is 0 when a link is down
+    forall(i in Set, j in Set) f(i, j) = sum(s in Set) sum(d in Set) fsd(s, d, i, j) ! The overall flow on a link is the sum of each single f_{ij}^{sd}
+    forall(i in Set) sum(j in Set) y(i, j) + sum(j in Set) y(j, i) <= 2*Delta*x(i) ! BigM constraint (if a router is off, the flow must be 0)
+    forall(i in Set) BigF(i) = sum(j in Set) f(i, j) + sum(j in Set) f(j, i)
+    forall(i in Set, j in Set) f(i, j) <= alfa*C(i, j)*y(i, j)
+    
+    forall(i in Set, j in Set) f(i, j) >= 0
+    forall(s in Set, d in Set, i in Set, j in Set) fsd(s, d, i, j) >= 0
+    
+  Obj = sum(i in Set) Pr(i)*x(i) + sum(i in Set) Qr(i) * BigF(i) + sum(i in Set, j in Set) Pl(i, j)*y(i, j) + sum(i in Set, j in Set) Ql(i, j)*f(i, j)
+    
+  !Binary Variables
+  forall(i in Set) x(i) is_binary
+  forall(i in Set, j in Set) y(i, j) is_binary
+    
+  !Minimize or Maximize
+  minimize(Myfunct)
+  forall(i in Set, j in Set) do
+  	writeln(i, j, " ", b(i, j))
+  end-do
+end-model
+
+
+!Misurazioni prelevate:
+! 1) Mattino, traffico da 0.5 a 1.5, max capacity 1.5*Nodes, Tutti i nodi generano traffico
+! 2) Pomeriggio, traffico da 7 a 10, max capacity 10*Nodes, Tutti i nodi generano traffico
+! 3) Sera, traffico da 4 a 6, max capacity 6*Nodes, Tutti i nodi generano traffico
+! 4) Mattino, traffico da 0.5 a 1.5, max capacity 1.5*Nodes, I nodi 6, 7, 10, 11 non generano traffico
+! 5) Pomeriggio, traffico da 7 a 10, max capacity 10*Nodes, I nodi 6, 7, 10, 11 non generano traffico
+! 6) Sera, traffico da 4 a 6, max capacity 6*Nodes, I nodi 6, 7, 10, 11 non generano traffico
+! 7) Mattino, traffico da 0.5 a 1.5, max capacity 1*Nodes, I nodi 7, 8, 12, 13 non generano traffico
+! 8) Pomeriggio, traffico da 7 a 10, max capacity 8*Nodes, I nodi 7, 8, 12, 13 non generano traffico
+! 9) Sera, traffico da 4 a 6, max capacity 5*Nodes, I nodi 7, 8, 12, 13 non generano traffico
+! 10) Particular Case: Traffico tra 30 e 32, 16 Nodi, nodi 6, 7, 10, 11 non generano traffico. Dopo l'ottimizzazione alcuni vengono accesi

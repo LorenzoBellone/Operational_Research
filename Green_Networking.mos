@@ -1,0 +1,87 @@
+model "Green_Networking"
+  uses "mmxprs"
+
+  declarations
+    Set = 1..6
+
+    x : array(Set) of mpvar
+    y : array(Set, Set) of mpvar
+    fsd : array(Set, Set, Set, Set) of mpvar
+    f : array(Set, Set) of mpvar
+    BigF : array(Set) of mpvar
+    Obj : mpvar
+
+    Tsd : array(Set, Set) of real
+    b : array(Set, Set) of integer
+    Pr : array(Set) of real ! The setup cost
+    Qr : array(Set) of real ! The angular coefficient of the setup cost (how much the cost increases with the load)
+    Delta : integer
+  end-declarations
+
+  !Initialization of the parameters
+   ! 1 - Traffic matrix uniformly distributed between 6 and 12
+  forall(n in Set, m in Set | n <> m) do
+    Tsd(n,m) := 6+(random*(12-6))
+  end-do
+   ! 2 - Maximum computation time = 3 min
+  setparam("XPRS_MAXTIME", -300)
+   ! 3 - Power consumption of the routers, when they are on. In this case a real number between 10 and 15
+  forall(n in Set) do
+    Pr(n) := 10 + (random*(15-10))
+  end-do
+   ! 4 - The angular coefficient of the setup cost
+  forall(n in Set) do
+    Qr(n) := 0.176 + (random*(1-0.176)) ! Between 10° and 45°
+  end-do
+   ! 5 - Number of transmitters and receivers
+  Delta := 4
+
+
+  !Initialization of the topology (random or grid)
+  ! b(1, 2) := 1
+  ! b(1, 5) := 1
+  ! b(2, 3) := 1
+  ! b(2, 6) := 1
+  ! b(3, 4) := 1
+  ! b(3, 5) := 1
+  ! b(4, 1) := 1
+  ! b(4, 2) := 1
+  ! b(5, 3) := 1
+  ! b(5, 6) := 1
+  ! b(6, 1) := 1
+  ! b(6, 4) := 1
+  forall(i in Set, j in Set) do
+   b(i, j) := 1
+  end-do
+
+
+  !Objectiv Function:
+  Myfunct := Obj
+
+  !Constraints
+  ! The first three are the flow constraints
+  forall(s in Set, d in Set, i in Set|i <> s and i <>d) sum(j in Set) fsd(s, d, i, j) - sum(j in Set) fsd(s, d, j, i) = 0
+  forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, s, j) = Tsd(s, d)
+  forall(s in Set, d in Set|s<>d) sum(j in Set) fsd(s, d, j, d) = Tsd(s, d)
+
+  forall(i in Set, j in Set) y(i, j) <= b(i, j)
+  forall(s in Set, d in Set, i in Set, j in Set) fsd(s, d, i, j) <= Tsd(s, d) * y(i, j) ! The flow is 0 when a link is down
+  forall(i in Set, j in Set) f(i, j) = sum(s in Set) sum(d in Set) fsd(s, d, i, j) ! The overall flow on a link is the sum of each single f_{ij}^{sd}
+  forall(i in Set) sum(j in Set) y(i, j) + sum(j in Set) y(j, i) <= 2*Delta*x(i) ! BigM constraint (if a router is off, the flow must be 0)
+  forall(i in Set) BigF(i) = sum(j in Set) f(i, j) + sum(j in Set) f(j, i)
+
+  Obj = sum(i in Set) Pr(i)*x(i) + sum(i in Set) Qr(i) * BigF(i)
+  
+  !Binary Variables
+  forall(i in Set) x(i) is_binary
+  forall(i in Set, j in Set) y(i, j) is_binary
+  
+  !Minimize or Maximize
+  minimize(Myfunct)
+
+
+
+  writeln("Begin running model")
+  !...
+  writeln("End running model")
+end-model
