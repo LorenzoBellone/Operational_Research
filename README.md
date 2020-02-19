@@ -1,5 +1,5 @@
 # Operational Research
-Laboratory activities from ICT for Geomatics course at Politecnico di Torino
+Laboratory activities from Operational Research course at Politecnico di Torino
 
 # Master degree
 ICT for Smart Societies - Politecnico di Torino
